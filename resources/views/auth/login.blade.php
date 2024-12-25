@@ -2,7 +2,7 @@
     <!-- Session Status -->
     <x-auth-session-status class="mb-4" :status="session('status')" />
 
-    <form method="POST" action="{{ route('login') }}">
+    <form method="POST" action="{{ route('login.face') }}">
         @csrf
 
         <!-- Email Address -->
@@ -15,12 +15,7 @@
         <!-- Password -->
         <div class="mt-4">
             <x-input-label for="password" :value="__('Password')" />
-
-            <x-text-input id="password" class="block mt-1 w-full"
-                            type="password"
-                            name="password"
-                            required autocomplete="current-password" />
-
+            <x-text-input id="password" class="block mt-1 w-full" type="password" name="password" required autocomplete="current-password" />
             <x-input-error :messages="$errors->get('password')" class="mt-2" />
         </div>
 
@@ -41,6 +36,23 @@
 
             <x-primary-button class="ms-3">
                 {{ __('Log in') }}
+            </x-primary-button>
+        </div>
+    </form>
+
+    <hr class="my-4">
+
+    <form method="POST" action="{{ route('login.face') }}">
+        @csrf
+        <div>
+            <x-input-label for="face_id" :value="__('Face ID')" />
+            <x-text-input id="face_id" class="block mt-1 w-full" type="number" name="face_id" required />
+            <x-input-error :messages="$errors->get('face_id')" class="mt-2" />
+        </div>
+
+        <div class="mt-4">
+            <x-primary-button class="w-full">
+                {{ __('Login with Face Recognition') }}
             </x-primary-button>
         </div>
     </form>
