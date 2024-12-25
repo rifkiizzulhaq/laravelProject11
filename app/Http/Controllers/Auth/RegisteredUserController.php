@@ -4,91 +4,128 @@ namespace App\Http\Controllers\Auth;
 
 use App\Http\Controllers\Controller;
 use App\Models\User;
+use App\Providers\RouteServiceProvider;
 use Illuminate\Auth\Events\Registered;
-use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Hash;
-use Illuminate\Support\Facades\Http;
 use Illuminate\Validation\Rules;
-use Illuminate\View\View;
+use Illuminate\Support\Facades\Http;
 
 class RegisteredUserController extends Controller
 {
-    /**
-     * Display the registration view.
-     */
-    public function create(): View
+    public function create()
     {
         return view('auth.register');
     }
 
-    /**
-     * Handle an incoming registration request.
-     *
-     * @throws \Illuminate\Validation\ValidationException
-     */
-    public function store(Request $request): RedirectResponse
+    public function store(Request $request)
     {
-        $request->validate([
-            'name' => ['required', 'string', 'max:255'],
-            'email' => ['required', 'string', 'lowercase', 'email', 'max:255', 'unique:'.User::class],
-            'password' => ['required', 'confirmed', Rules\Password::defaults()],
-        ]);
+        try {
+            $request->validate([
+                'name' => ['required', 'string', 'max:255'],
+                'email' => ['required', 'string', 'lowercase', 'email', 'max:255', 'unique:'.User::class],
+                'password' => ['required', 'confirmed', Rules\Password::defaults()],
+                'face_id' => ['required', 'numeric']
+            ]);
 
-        // Generate face_id baru
-        $lastUser = User::whereNotNull('face_id')->orderBy('face_id', 'desc')->first();
-        $newFaceId = $lastUser ? ($lastUser->face_id + 1) : 1;
+            $user = User::create([
+                'name' => $request->name,
+                'email' => $request->email,
+                'password' => Hash::make($request->password),
+                'face_id' => $request->face_id
+            ]);
 
-        // 1. Register face
-        $registerResponse = Http::post("http://127.0.0.1:5000/register_face", [
-            'face_id' => $newFaceId,
-        ]);
+            event(new Registered($user));
 
-        \Log::info('Face Registration Response:', [
-            'face_id' => $newFaceId,
-            'response' => $registerResponse->json()
-        ]);
+            Auth::login($user);
 
-        if (!$registerResponse->successful()) {
-            return back()->withErrors(['face_id' => 'Face registration failed']);
+            if ($request->wantsJson()) {
+                return response()->json([
+                    'status' => 'success',
+                    'message' => 'Registration successful',
+                    'redirect' => '/dashboard'  // Menggunakan path langsung
+                ]);
+            }
+
+            return redirect('/dashboard');  // Menggunakan path langsung
+
+        } catch (\Exception $e) {
+            \Log::error('Registration error:', [
+                'message' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
+            ]);
+
+            if ($request->wantsJson()) {
+                return response()->json([
+                    'status' => 'error',
+                    'message' => $e->getMessage()
+                ], 422);
+            }
+
+            return back()->withErrors(['error' => $e->getMessage()]);
         }
-
-        // 2. Train model
-        $trainResponse = Http::post("http://127.0.0.1:5000/train_face");
-
-        \Log::info('Face Training Response:', [
-            'response' => $trainResponse->json()
-        ]);
-
-        if (!$trainResponse->successful()) {
-            return back()->withErrors(['face_id' => 'Face training failed']);
-        }
-
-        // 3. Create user
-        $user = User::create([
-            'name' => $request->name,
-            'email' => $request->email,
-            'password' => Hash::make($request->password),
-            'face_id' => $newFaceId,
-        ]);
-
-        event(new Registered($user));
-
-        Auth::login($user);
-
-        return redirect(route('dashboard', absolute: false));
     }
 
-    /**
-     * Generate a unique face ID for the user.
-     */
-    protected function generateFaceId(): int
+    public function registerFace(Request $request)
     {
-        do {
-            $faceId = rand(1000, 9999); // Random 4-digit ID
-        } while (User::where('face_id', $faceId)->exists());
+        try {
+            if (!$request->hasFile('image')) {
+                return response()->json([
+                    'status' => 'error',
+                    'message' => 'No image file received'
+                ], 400);
+            }
 
-        return $faceId;
+            // Generate face_id
+            $lastUser = User::whereNotNull('face_id')->orderBy('face_id', 'desc')->first();
+            $newFaceId = $lastUser ? ($lastUser->face_id + 1) : 1;
+
+            // Kirim gambar ke API Python
+            $response = Http::attach(
+                'image',
+                file_get_contents($request->file('image')->path()),
+                'image.jpg'
+            )->post("http://127.0.0.1:5000/register_face", [
+                'face_id' => $newFaceId
+            ]);
+
+            \Log::info('Face Registration Response:', $response->json());
+
+            if ($response->successful()) {
+                // Train model setelah registrasi berhasil
+                $trainResponse = Http::post("http://127.0.0.1:5000/train_face");
+                
+                if (!$trainResponse->successful()) {
+                    return response()->json([
+                        'status' => 'error',
+                        'message' => 'Face registration successful but training failed'
+                    ], 500);
+                }
+
+                return response()->json([
+                    'status' => 'success',
+                    'message' => 'Face registered and trained successfully',
+                    'face_id' => $newFaceId
+                ]);
+            }
+
+            return response()->json([
+                'status' => 'error',
+                'message' => $response->json()['message'] ?? 'Face registration failed'
+            ], 400);
+
+        } catch (\Exception $e) {
+            \Log::error('Face Registration Error:', [
+                'message' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
+            ]);
+
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Error during face registration: ' . $e->getMessage()
+            ], 500);
+        }
     }
 }

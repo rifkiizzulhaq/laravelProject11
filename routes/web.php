@@ -3,6 +3,7 @@
 use App\Http\Controllers\ProfileController;
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\Auth\AuthenticatedSessionController;
+use App\Http\Controllers\Auth\RegisteredUserController;
 
 Route::get('/', function () {
     return view('welcome');
@@ -22,6 +23,9 @@ Route::post('/face-login', [AuthenticatedSessionController::class, 'loginWithFac
 
 Route::post('/login/face', [AuthenticatedSessionController::class, 'loginWithFace'])
     ->name('login.face')
-    ->middleware('web');
+    ->middleware('guest');
+
+Route::post('/register/face', [RegisteredUserController::class, 'registerFace'])
+    ->name('register.face');
 
 require __DIR__.'/auth.php';

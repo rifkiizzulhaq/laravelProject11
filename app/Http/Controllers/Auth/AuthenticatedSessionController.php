@@ -54,67 +54,62 @@ class AuthenticatedSessionController extends Controller
     public function loginWithFace(Request $request): JsonResponse
     {
         try {
-            $response = Http::post("http://127.0.0.1:5000/recognize_face");
-            
-            \Log::info('Face Recognition API Response:', [
-                'status' => $response->status(),
-                'body' => $response->json()
-            ]);
+            \Log::info('Face login attempt started');
+
+            if (!$request->hasFile('image')) {
+                \Log::error('No image file received');
+                return response()->json(['error' => 'No image file received'], 400);
+            }
+
+            // Kirim gambar ke API Python untuk recognition
+            $response = Http::attach(
+                'image',
+                file_get_contents($request->file('image')->path()),
+                'image.jpg'
+            )->post('http://127.0.0.1:5000/recognize_face');
+
+            \Log::info('Python API Response:', $response->json());
 
             if ($response->successful()) {
-                $responseData = $response->json();
-                $face_id = isset($responseData['face_id']) ? (int)$responseData['face_id'] : null;
+                $data = $response->json();
                 
-                \Log::info('Processing face_id:', [
-                    'face_id' => $face_id,
-                    'type' => gettype($face_id)
-                ]);
-
-                if (!$face_id) {
-                    return response()->json(['error' => 'No face_id received'], 400);
+                if (!isset($data['face_id'])) {
+                    \Log::error('No face_id in response');
+                    return response()->json(['error' => 'Face recognition failed'], 400);
                 }
 
-                // Debug: Tampilkan query yang akan dijalankan
-                \Log::info('Searching for user with query:', [
-                    'face_id' => $face_id,
-                    'sql' => User::where('face_id', $face_id)->toSql()
-                ]);
-
+                $face_id = (int)$data['face_id'];
+                
+                // Debug log untuk face_id
+                \Log::info('Looking for user with face_id:', ['face_id' => $face_id]);
+                
                 $user = User::where('face_id', $face_id)->first();
                 
-                \Log::info('User search result:', [
-                    'found' => $user ? true : false,
-                    'user' => $user
-                ]);
-
-                // Debug: Tampilkan semua user dengan face_id
-                $allUsers = User::whereNotNull('face_id')->get(['id', 'name', 'face_id']);
-                \Log::info('All users with face_id:', $allUsers->toArray());
+                // Debug log untuk user
+                \Log::info('User found:', ['user' => $user ? $user->toArray() : null]);
 
                 if ($user) {
                     Auth::login($user);
                     return response()->json([
                         'message' => 'Login successful',
-                        'user' => $user,
-                        'redirect' => route('dashboard')
+                        'redirect' => '/dashboard'
                     ]);
                 }
 
-                return response()->json([
-                    'message' => 'Face recognized but no user found',
-                    'searched_face_id' => $face_id,
-                    'available_face_ids' => $allUsers->pluck('face_id')
-                ], 404);
+                \Log::error('No user found with face_id:', ['face_id' => $face_id]);
+                return response()->json(['error' => 'Face recognized but no user found'], 404);
             }
 
-            return response()->json(['error' => 'Face recognition failed'], 500);
+            \Log::error('Python API error:', $response->json());
+            return response()->json([
+                'error' => $response->json()['message'] ?? 'Face recognition failed'
+            ], 400);
 
         } catch (\Exception $e) {
-            \Log::error('Exception during face login:', [
+            \Log::error('Face login error:', [
                 'message' => $e->getMessage(),
                 'trace' => $e->getTraceAsString()
             ]);
-            
             return response()->json(['error' => 'Internal server error'], 500);
         }
     }
