@@ -54,39 +54,29 @@ class AuthenticatedSessionController extends Controller
     public function loginWithFace(Request $request): JsonResponse
     {
         try {
-            \Log::info('Face login attempt started');
-
             if (!$request->hasFile('image')) {
-                \Log::error('No image file received');
                 return response()->json(['error' => 'No image file received'], 400);
             }
 
-            // Kirim gambar ke API Python untuk recognition
             $response = Http::attach(
                 'image',
                 file_get_contents($request->file('image')->path()),
                 'image.jpg'
             )->post('http://127.0.0.1:5000/recognize_face');
 
-            \Log::info('Python API Response:', $response->json());
-
             if ($response->successful()) {
                 $data = $response->json();
                 
+                if (isset($data['error'])) {
+                    return response()->json(['error' => $data['error']], 401);
+                }
+
                 if (!isset($data['face_id'])) {
-                    \Log::error('No face_id in response');
                     return response()->json(['error' => 'Face recognition failed'], 400);
                 }
 
                 $face_id = (int)$data['face_id'];
-                
-                // Debug log untuk face_id
-                \Log::info('Looking for user with face_id:', ['face_id' => $face_id]);
-                
                 $user = User::where('face_id', $face_id)->first();
-                
-                // Debug log untuk user
-                \Log::info('User found:', ['user' => $user ? $user->toArray() : null]);
 
                 if ($user) {
                     Auth::login($user);
@@ -96,13 +86,11 @@ class AuthenticatedSessionController extends Controller
                     ]);
                 }
 
-                \Log::error('No user found with face_id:', ['face_id' => $face_id]);
                 return response()->json(['error' => 'Face recognized but no user found'], 404);
             }
 
-            \Log::error('Python API error:', $response->json());
             return response()->json([
-                'error' => $response->json()['message'] ?? 'Face recognition failed'
+                'error' => $response->json()['error'] ?? 'Face recognition failed'
             ], 400);
 
         } catch (\Exception $e) {

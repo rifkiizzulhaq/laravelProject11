@@ -39,17 +39,15 @@ class RegisteredUserController extends Controller
 
             event(new Registered($user));
 
-            Auth::login($user);
-
             if ($request->wantsJson()) {
                 return response()->json([
                     'status' => 'success',
                     'message' => 'Registration successful',
-                    'redirect' => '/dashboard'  // Menggunakan path langsung
+                    'redirect' => route('login')
                 ]);
             }
 
-            return redirect('/dashboard');  // Menggunakan path langsung
+            return redirect()->route('login');
 
         } catch (\Exception $e) {
             \Log::error('Registration error:', [
