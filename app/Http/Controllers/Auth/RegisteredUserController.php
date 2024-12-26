@@ -126,4 +126,46 @@ class RegisteredUserController extends Controller
             ], 500);
         }
     }
+
+    public function register(Request $request)
+    {
+        try {
+            // ... validasi request ...
+
+            // Kirim gambar ke API Python
+            $response = Http::attach(
+                'image',
+                file_get_contents($request->file('image')->path()),
+                'image.jpg'
+            )->post("http://127.0.0.1:5000/register_face", [
+                'face_id' => $newFaceId
+            ]);
+
+            if ($response->status() === 409) {  // Duplicate face detected
+                return response()->json([
+                    'status' => 'error',
+                    'message' => 'This face is already registered in our system'
+                ], 409);
+            }
+
+            if (!$response->successful()) {
+                return response()->json([
+                    'status' => 'error',
+                    'message' => $response->json()['error'] ?? 'Face registration failed'
+                ], $response->status());
+            }
+
+            // ... proses registrasi lainnya ...
+
+        } catch (\Exception $e) {
+            \Log::error('Registration error:', [
+                'message' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
+            ]);
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Registration failed'
+            ], 500);
+        }
+    }
 }
