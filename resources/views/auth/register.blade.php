@@ -115,6 +115,38 @@
         </div>
     </form>
 
+    <style>
+        #video {
+            width: 100%;
+            max-width: 640px;
+            transform: rotateY(180deg); /* Flip video untuk tampilan */
+        }
+
+        .camera-container {
+            width: 100%;
+            max-width: 640px;
+            margin: 0 auto;
+            position: relative;
+        }
+
+        #canvas {
+            display: none;
+            transform: rotateY(180deg); /* Flip canvas juga */
+        }
+
+        .loading-indicator {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            display: none;
+        }
+
+        .loading-indicator.active {
+            display: block;
+        }
+    </style>
+
     <script>
         document.addEventListener('DOMContentLoaded', function() {
             const successModal = document.getElementById('successModal');
@@ -243,5 +275,58 @@
                 }
             });
         });
+
+        async function initializeCamera() {
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({
+                    video: {
+                        width: { ideal: 640 },
+                        height: { ideal: 480 },
+                        facingMode: "user"
+                    }
+                });
+                
+                video.srcObject = stream;
+                await video.play();
+                console.log('Camera initialized');
+                return true;
+            } catch (err) {
+                console.error('Error accessing camera:', err);
+                return false;
+            }
+        }
+
+        // Update fungsi capture untuk membalik gambar sebelum dikirim
+        async function captureFace() {
+            try {
+                loadingIndicator.classList.add('active');
+                registerButton.disabled = true;
+
+                // Set canvas dimensions
+                canvas.width = video.videoWidth;
+                canvas.height = video.videoHeight;
+                const ctx = canvas.getContext('2d');
+                
+                // Flip the context horizontally before drawing
+                ctx.translate(canvas.width, 0);
+                ctx.scale(-1, 1);
+                ctx.drawImage(video, 0, 0);
+                // Reset transformation
+                ctx.setTransform(1, 0, 0, 1, 0, 0);
+
+                // Convert to blob
+                const blob = await new Promise(resolve => {
+                    canvas.toBlob(resolve, 'image/jpeg');
+                });
+
+                // ... rest of your capture and upload code ...
+
+            } catch (error) {
+                console.error('Error capturing face:', error);
+                loadingIndicator.classList.remove('active');
+                registerButton.disabled = false;
+                alert('Error capturing face image. Please try again.');
+            }
+        }
     </script>
 </x-guest-layout>

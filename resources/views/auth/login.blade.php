@@ -133,6 +133,29 @@
         const passwordLoginForm = document.getElementById('passwordLoginForm');
         let stream = null;
 
+        // Tambahkan fungsi updateUIState
+        function updateUIState(state) {
+            try {
+                console.log('Initial setup complete:', state);
+                
+                if (faceLoginSection) faceLoginSection.style.display = state.faceLoginVisible;
+                if (passwordLoginForm) passwordLoginForm.style.display = state.passwordFormVisible;
+                if (backToFaceLogin) backToFaceLogin.style.display = state.backButtonExists ? 'block' : 'none';
+                
+                if (video) {
+                    video.style.display = state.videoExists ? 'block' : 'none';
+                    if (stream) {
+                        const tracks = stream.getTracks();
+                        tracks.forEach(track => {
+                            track.enabled = (state.streamActive === 'active');
+                        });
+                    }
+                }
+            } catch (error) {
+                console.error('Error updating UI state:', error);
+            }
+        }
+
         // Face login process
         async function startFaceLogin(e) {
             e.preventDefault();
@@ -144,7 +167,14 @@
                 // Capture image from video
                 canvas.width = video.videoWidth;
                 canvas.height = video.videoHeight;
-                canvas.getContext('2d').drawImage(video, 0, 0);
+                const ctx = canvas.getContext('2d');
+                
+                // Flip the context horizontally before drawing
+                ctx.translate(canvas.width, 0);
+                ctx.scale(-1, 1);
+                ctx.drawImage(video, 0, 0);
+                // Reset transformation
+                ctx.setTransform(1, 0, 0, 1, 0, 0);
 
                 const blob = await new Promise(resolve => {
                     canvas.toBlob(resolve, 'image/jpeg');
@@ -170,7 +200,7 @@
                     await Swal.fire({
                         icon: 'success',
                         title: 'Success!',
-                        text: 'Login successful!',
+                        text: result.message || 'Login successful!',
                         timer: 1500,
                         showConfirmButton: false
                     });
@@ -206,33 +236,21 @@
                 }
 
                 console.log('Requesting camera access...');
-                stream = await navigator.mediaDevices.getUserMedia({ 
-                    video: { 
+                stream = await navigator.mediaDevices.getUserMedia({
+                    video: {
                         width: { ideal: 640 },
                         height: { ideal: 480 },
                         facingMode: "user"
-                    } 
+                    }
                 });
-
-                if (video) {
-                    video.srcObject = stream;
-                    video.onloadedmetadata = async () => {
-                        try {
-                            await video.play();
-                            console.log('Video started playing');
-                        } catch (e) {
-                            console.error('Error playing video:', e);
-                        }
-                    };
-                    console.log('Camera initialized');
-                }
+                
+                video.srcObject = stream;
+                await video.play();
+                console.log('Camera initialized');
+                return true;
             } catch (err) {
                 console.error('Error accessing camera:', err);
-                Swal.fire({
-                    icon: 'error',
-                    title: 'Camera Error',
-                    text: 'Could not access camera. Please ensure camera access is allowed.'
-                });
+                return false;
             }
         }
 
@@ -246,22 +264,42 @@
 
         // Simplified toggle functions
         window.showFaceLogin = async function() {
-            if (faceLoginSection && passwordLoginForm) {
+            try {
                 console.log('Switching to face login');
                 
-                // First show the section
-                faceLoginSection.style.display = 'block';
-                passwordLoginForm.style.display = 'none';
+                // Update UI first
+                updateUIState({
+                    faceLoginVisible: 'block',
+                    passwordFormVisible: 'none',
+                    backButtonExists: true,
+                    videoExists: true,
+                    streamActive: 'inactive'
+                });
+
+                console.log('Requesting camera access...');
+                const cameraInitialized = await initializeCamera();
                 
-                // Then initialize camera
-                try {
-                    await initializeCamera();
-                    console.log('Camera initialized after switching to face login');
-                } catch (err) {
-                    console.error('Error initializing camera:', err);
+                if (!cameraInitialized) {
+                    throw new Error('Failed to initialize camera');
                 }
-            } else {
-                console.error('Required elements not found');
+
+                console.log('Camera initialized after switching to face login');
+                updateUIState({
+                    faceLoginVisible: 'block',
+                    passwordFormVisible: 'none',
+                    backButtonExists: true,
+                    videoExists: true,
+                    streamActive: 'active'
+                });
+
+            } catch (error) {
+                console.error('Error in showFaceLogin:', error);
+                await Swal.fire({
+                    icon: 'error',
+                    title: 'Camera Error',
+                    text: 'Failed to access camera. Please check your camera permissions.',
+                });
+                showPasswordLogin();
             }
         };
 
@@ -332,6 +370,35 @@
                 stream.getTracks().forEach(track => track.stop());
             }
         });
+
+        // Cleanup function untuk menghentikan stream kamera
+        function stopCamera() {
+            if (stream) {
+                stream.getTracks().forEach(track => track.stop());
+                stream = null;
+                if (video) {
+                    video.srcObject = null;
+                }
+            }
+        }
+
+        // Update showPasswordLogin untuk membersihkan kamera
+        function showPasswordLogin() {
+            stopCamera();
+            faceLoginSection.style.display = 'none';
+            passwordLoginForm.style.display = 'block';
+            backToFaceLogin.style.display = 'none';
+            updateUIState({
+                faceLoginVisible: 'none',
+                passwordFormVisible: 'block',
+                backButtonExists: false,
+                videoExists: false,
+                streamActive: 'inactive'
+            });
+        }
+
+        // Event listener untuk cleanup saat halaman ditutup
+        window.addEventListener('beforeunload', stopCamera);
     });
     </script>
 
@@ -352,5 +419,43 @@
     #backToFaceLogin:hover {
         background-color: #4338CA !important;
     }
+
+    #video {
+        width: 100%;
+        max-width: 640px;
+        transform: rotateY(180deg);
+    }
+
+    .camera-container {
+        width: 100%;
+        max-width: 640px;
+        margin: 0 auto;
+        position: relative;
+    }
+
+    #canvas {
+        display: none;
+        transform: rotateY(180deg);
+    }
+
+    .loading-indicator {
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        display: none;
+    }
+
+    .loading-indicator.active {
+        display: block;
+    }
     </style>
 </x-guest-layout>
+
+@push('scripts')
+<script>
+    if (typeof Swal === 'undefined') {
+        console.error('SweetAlert2 is not loaded');
+    }
+</script>
+@endpush

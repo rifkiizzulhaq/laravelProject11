@@ -45,5 +45,23 @@ return new class extends Migration
         Schema::dropIfExists('users');
         Schema::dropIfExists('password_reset_tokens');
         Schema::dropIfExists('sessions');
+
+        try {
+            // Check Python server
+            $response = Http::timeout(5)->get('http://127.0.0.1:5000');
+            
+            if ($response->successful()) {
+                // Clear face data
+                Http::post('http://127.0.0.1:5000/clear_face_data');
+            } else {
+                throw new \Exception('Python server returned error response');
+            }
+        } catch (\Exception $e) {
+            die("\n\033[31mERROR: Cannot clear face recognition data!\033[0m\n" .
+                "Python server is not running. Please start it and try again.\n" .
+                "Error: " . $e->getMessage() . "\n");
+        }
+
+        Schema::dropIfExists('users');
     }
 };

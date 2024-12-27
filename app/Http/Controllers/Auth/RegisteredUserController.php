@@ -12,6 +12,7 @@ use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Validation\Rules;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Log;
 
 class RegisteredUserController extends Controller
 {
@@ -165,6 +166,68 @@ class RegisteredUserController extends Controller
             return response()->json([
                 'status' => 'error',
                 'message' => 'Registration failed'
+            ], 500);
+        }
+    }
+
+    public function storeFace(Request $request)
+    {
+        try {
+            // Validate the request
+            $request->validate([
+                'name' => ['required', 'string', 'max:255'],
+                'email' => ['required', 'string', 'email', 'max:255', 'unique:users'],
+                'password' => ['required', 'confirmed', Rules\Password::defaults()],
+                'image' => ['required']
+            ]);
+
+            // Generate face_id (misalnya menggunakan timestamp)
+            $face_id = time();
+
+            // Register face dengan Python server
+            $response = Http::attach(
+                'image', 
+                file_get_contents($request->image), 
+                'face.jpg'
+            )->post('http://127.0.0.1:5000/register_face', [
+                'face_id' => $face_id
+            ]);
+
+            if (!$response->successful()) {
+                Log::error('Face registration failed', [
+                    'response' => $response->json(),
+                    'status' => $response->status()
+                ]);
+                return response()->json([
+                    'error' => $response->json()['error'] ?? 'Face registration failed'
+                ], 400);
+            }
+
+            // Create user jika face registration berhasil
+            $user = User::create([
+                'name' => $request->name,
+                'email' => $request->email,
+                'password' => Hash::make($request->password),
+                'face_id' => $face_id
+            ]);
+
+            event(new Registered($user));
+
+            Auth::login($user);
+
+            return response()->json([
+                'message' => 'Registration successful',
+                'redirect' => RouteServiceProvider::HOME
+            ]);
+
+        } catch (\Exception $e) {
+            Log::error('Registration error', [
+                'message' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
+            ]);
+            
+            return response()->json([
+                'error' => 'Registration failed: ' . $e->getMessage()
             ], 500);
         }
     }

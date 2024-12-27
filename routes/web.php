@@ -21,9 +21,9 @@ Route::middleware('auth')->group(function () {
 
 Route::post('/face-login', [AuthenticatedSessionController::class, 'loginWithFace'])->name('face.login');
 
-Route::post('/login/face', [AuthenticatedSessionController::class, 'loginWithFace'])
-    ->name('login.face')
-    ->middleware('guest');
+Route::post('/login/face', [AuthenticatedSessionController::class, 'loginFace'])
+    ->middleware('guest')
+    ->name('login.face');
 
 Route::post('/register/face', [RegisteredUserController::class, 'registerFace'])
     ->name('register.face');

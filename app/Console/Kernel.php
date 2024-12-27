@@ -13,7 +13,7 @@ class Kernel extends ConsoleKernel
      * @var array<int, class-string|string>
      */
     protected $commands = [
-        Commands\ClearFaceDataset::class,
+        Commands\ClearFaceData::class,
     ];
 
     /**

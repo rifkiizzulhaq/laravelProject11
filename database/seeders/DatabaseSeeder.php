@@ -10,7 +10,7 @@ class DatabaseSeeder extends Seeder
     {
         $this->call([
             ClearFaceDatasetSeeder::class,
-            // ... seeder lainnya
+            // ... other seeders ...
         ]);
     }
 }
